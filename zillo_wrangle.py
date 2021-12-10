@@ -1,28 +1,56 @@
+########## Combine all of the above steps into function(s)#################
+
+#################### IMPORT LIBRARIES #################
+
+# Basic libraries
 import pandas as pd
+import numpy as np 
+
+#Vizualization Tools
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np 
-from env import host, user, password
 
-# function to contact database
+#Modeling Tools
+from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+import statsmodels.api as sm
+
+from datetime import date
+
+import sklearn.preprocessing
+from sklearn.model_selection import train_test_split
+
+
+import warnings
+warnings.filterwarnings("ignore")
+
+#Custim functions
+from env import host, user, password #Database credentials
+import zillo_wrangle
+
+
+
+
+
+################ PULL DATA FROM DB ############## 
+
 def get_db_url(db_name):
     return f"mysql+pymysql://{user}:{password}@{host}/{db_name}"
 
-# function to query database and return zillow df
+
 def get_data_from_sql():
     query = """
     SELECT bedroomcnt as bedrooms, 
        bathroomcnt as bathrooms,
        calculatedfinishedsquarefeet as square_feet,
+       yearbuilt as year,
        taxamount as taxes,
        taxvaluedollarcnt as home_value,
-       propertylandusedesc, 
-       fips as fips_number,
+       fips as fips,
        regionidzip as zip_code
     FROM predictions_2017
-    JOIN properties_2017 USING(id)
-    JOIN propertylandusetype USING(propertylandusetypeid)
-    WHERE (transactiondate >= '2017-05-01' AND transactiondate < '2017-09-01') 
+     JOIN properties_2017 USING(parcelid)
+    WHERE (transactiondate >= '2017-01-01' AND transactiondate <= '2017-12-31') 
         AND propertylandusetypeid = '261'
         AND bedroomcnt > 0
         AND bathroomcnt > 0
@@ -34,3 +62,132 @@ def get_data_from_sql():
     """
     df = pd.read_sql(query, get_db_url('zillow'))
     return df
+
+
+################ REMOVE OUTLIERS #################
+
+def remove_outliers(df, k, col_list):
+    ''' remove outliers from a list of columns in a dataframe 
+        and return that dataframe
+    '''
+    
+    for col in col_list:
+
+        q1, q3 = df[col].quantile([.25, .75])  # get quartiles
+        
+        iqr = q3 - q1   # calculate interquartile range
+        
+        upper_bound = q3 + k * iqr   # get upper bound
+        lower_bound = q1 - k * iqr   # get lower bound
+
+        # return dataframe without outliers
+        
+        df = df[(df[col] > lower_bound) & (df[col] < upper_bound)]
+        
+    return df
+
+######## Clean Data ###########
+
+def clean_data(df):
+    '''
+    This funciton takes in the zillow df and drops  Null values reassigns some dtypes.
+    '''
+    df = df.dropna()
+    df['fips'] = df['fips'].astype(int)
+    df['zip_code'] = df['zip_code'].astype('category')
+    df['square_feet'] = df['square_feet'].astype('int')
+    df['year'] = df['year'].astype(int)
+
+    return df
+
+######### ADD COUNTY AND STATE COLUMNS #######
+
+def assign_county(row):
+    if row['fips']==6037:
+        return 'Los Angeles'
+    if row['fips']==6059:
+        return 'Orange'
+    if row['fips']==6111:
+        return 'Ventura'
+
+######## Feature engineering ########
+
+def engineer(zillow):
+    zillow['county'] = zillow.apply(lambda row: assign_county(row), axis =1) #Add counties
+    zillow['state'] = 'CA' #Add state
+    zillow['age'] = date.today().year-zillow.year # Add age
+    return zillow
+
+########## TRAIN VALIDATE TEST SPLIT #########
+
+def split_my_data(df, pct=0.10):
+    '''
+    This splits a dataframe into train, validate, and test sets. 
+    df = dataframe to split
+    pct = size of the test set, 1/2 of size of the validate set
+    Returns three dataframes (train, validate, test)
+    '''
+    train_validate, test = train_test_split(df, test_size=pct, random_state = 123)
+    train, validate = train_test_split(train_validate, test_size=pct*2, random_state = 123)
+    return train, validate, test
+
+########## ADD BASELINE #########
+
+def add_baseline(train, validate, test):
+    baseline = train.home_value.median()
+    train['baseline'] = baseline
+    validate['baseline'] = baseline
+    test['baseline'] = baseline
+    return train, validate, test
+
+######## SPLIT IN TO X /y features / target ########
+
+def split_xy(train, validate, test):
+    X_train = train.drop(columns='home_value')
+    y_train = train.home_value
+
+    X_validate = validate.drop(columns='home_value')
+    y_validate = validate.home_value
+
+    X_test = test.drop(columns='home_value')
+    y_test = test.home_value
+
+    return X_train, y_train, X_validate, y_validate, X_test, y_test
+
+############## Robust Scale ###############
+
+def scale(X_train, X_validate, X_test, train, validate, test):
+    scaler = sklearn.preprocessing.RobustScaler()
+
+    columns = ['bedrooms', 'bathrooms', 'square_feet', 'fips', 'age']
+    
+    scaler.fit(X_train[columns])
+
+    new_column_names = [c + '_scaled' for c in columns]
+
+    X_train = pd.concat([X_train, pd.DataFrame(scaler.transform(X_train[columns]), columns=new_column_names, index = train.index),], axis=1)
+
+    X_validate = pd.concat([X_validate, pd.DataFrame(scaler.transform(X_validate[columns]), columns=new_column_names, index = validate.index),], axis=1)
+
+    X_test = pd.concat([X_test, pd.DataFrame(scaler.transform(X_test[columns]), columns=new_column_names, index = test.index),], axis=1)
+    
+    return X_train, X_validate, X_test
+
+######### CALL ALL FUNCTIONS TOGETHER #######
+
+def wrangle():
+    zillow = get_data_from_sql()
+    zillow = remove_outliers(zillow, 1.5, ['bedrooms', 'bathrooms', 'square_feet', 'taxes', 'home_value'])
+    zillow = clean_data(zillow) #Drop NAs and change dtypes
+    zillow = engineer(zillow)
+    train, validate, test = split_my_data(zillow)
+    train, validate, test = add_baseline(train, validate, test)
+    X_train, y_train, X_validate, y_validate, X_test, y_test = split_xy(train, validate, test)
+    X_train, X_validate, X_test = scale(X_train, X_validate, X_test, train, validate, test)
+    return X_train, y_train, X_validate, y_validate, X_test, y_test
+
+
+
+
+
+
