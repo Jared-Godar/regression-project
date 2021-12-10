@@ -116,6 +116,32 @@ def engineer(zillow):
     zillow['county'] = zillow.apply(lambda row: assign_county(row), axis =1) #Add counties
     zillow['state'] = 'CA' #Add state
     zillow['age'] = date.today().year-zillow.year # Add age
+    #One-hot Encode County
+    dummy_df = pd.get_dummies(zillow[['county']], drop_first=True)
+    zillow = pd.concat([zillow, dummy_df], axis=1)
+    return zillow
+
+###### ADD COUNTY AVERAGE #############
+
+def county_avg(zillow):
+    la = zillow[zillow.county=='Los Angeles']
+    oc = zillow[zillow.county=='Orange']
+    ven = zillow[zillow.county=='Ventura']
+
+    la_avg = la.home_value.mean()
+    oc_avg = oc.home_value.mean()
+    ven_avg = ven.home_value.mean()
+
+    def assign_county_avg(row):
+        if row['fips']==6037:
+            return la_avg
+        if row['fips']==6059:
+            return oc_avg
+        if row['fips']==6111:
+            return ven_avg
+
+    zillow['county_avg'] = zillow.apply(lambda row: assign_county_avg(row), axis =1)
+
     return zillow
 
 ########## TRAIN VALIDATE TEST SPLIT #########
@@ -159,7 +185,7 @@ def split_xy(train, validate, test):
 def scale(X_train, X_validate, X_test, train, validate, test):
     scaler = sklearn.preprocessing.RobustScaler()
 
-    columns = ['bedrooms', 'bathrooms', 'square_feet', 'fips', 'age']
+    columns = ['bedrooms', 'bathrooms', 'square_feet', 'age']
     
     scaler.fit(X_train[columns])
 
@@ -180,6 +206,7 @@ def wrangle():
     zillow = remove_outliers(zillow, 1.5, ['bedrooms', 'bathrooms', 'square_feet', 'taxes', 'home_value'])
     zillow = clean_data(zillow) #Drop NAs and change dtypes
     zillow = engineer(zillow)
+    zillow = county_avg(zillow)
     train, validate, test = split_my_data(zillow)
     train, validate, test = add_baseline(train, validate, test)
     X_train, y_train, X_validate, y_validate, X_test, y_test = split_xy(train, validate, test)
