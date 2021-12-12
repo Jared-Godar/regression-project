@@ -35,6 +35,9 @@ import zillo_wrangle
 ################ PULL DATA FROM DB ############## 
 
 def get_db_url(db_name):
+    '''
+    Gets appropriate url to pull data from credentials stored in env file
+    '''
     return f"mysql+pymysql://{user}:{password}@{host}/{db_name}"
 
 
@@ -103,6 +106,9 @@ def clean_data(df):
 ######### ADD COUNTY AND STATE COLUMNS #######
 
 def assign_county(row):
+    '''
+    Assign countes based on fips
+    '''
     if row['fips']==6037:
         return 'Los Angeles'
     if row['fips']==6059:
@@ -113,6 +119,9 @@ def assign_county(row):
 ######## Feature engineering ########
 
 def engineer(zillow):
+    '''
+    Adds columns for county, state, and year, one-hot encodes county data
+    '''
     zillow['county'] = zillow.apply(lambda row: assign_county(row), axis =1) #Add counties
     zillow['state'] = 'CA' #Add state
     zillow['age'] = date.today().year-zillow.year # Add age
@@ -124,6 +133,9 @@ def engineer(zillow):
 ###### ADD COUNTY AVERAGE #############
 
 def county_avg(zillow):
+    '''
+    Defines average values by county
+    '''
     la = zillow[zillow.county=='Los Angeles']
     oc = zillow[zillow.county=='Orange']
     ven = zillow[zillow.county=='Ventura']
@@ -133,6 +145,9 @@ def county_avg(zillow):
     ven_avg = ven.home_value.mean()
 
     def assign_county_avg(row):
+        '''
+        Adds county averages
+        '''
         if row['fips']==6037:
             return la_avg
         if row['fips']==6059:
@@ -160,6 +175,9 @@ def split_my_data(df, pct=0.10):
 ########## ADD BASELINE #########
 
 def add_baseline(train, validate, test):
+    '''
+    Assigns median home price as baseline prediction
+    '''
     baseline = train.home_value.median()
     train['baseline'] = baseline
     validate['baseline'] = baseline
@@ -169,6 +187,9 @@ def add_baseline(train, validate, test):
 ######## SPLIT IN TO X /y features / target ########
 
 def split_xy(train, validate, test):
+    '''
+    Splits dataframe into train, validate, and test data frames
+    '''
     X_train = train.drop(columns='home_value')
     y_train = train.home_value
 
@@ -183,6 +204,9 @@ def split_xy(train, validate, test):
 ############## Robust Scale ###############
 
 def scale(X_train, X_validate, X_test, train, validate, test):
+    '''
+    Uses robust scaler to scale specified numeric columns
+    '''
     scaler = sklearn.preprocessing.RobustScaler()
 
     columns = ['bedrooms', 'bathrooms', 'square_feet', 'age']
@@ -202,6 +226,9 @@ def scale(X_train, X_validate, X_test, train, validate, test):
 ######### CALL ALL FUNCTIONS TOGETHER #######
 
 def wrangle():
+    '''
+    Calls appropriate functions to import and clean data for modeling
+    '''
     zillow = get_data_from_sql()
     zillow = remove_outliers(zillow, 1.5, ['bedrooms', 'bathrooms', 'square_feet', 'taxes', 'home_value'])
     zillow = clean_data(zillow) #Drop NAs and change dtypes
@@ -211,7 +238,7 @@ def wrangle():
     train, validate, test = add_baseline(train, validate, test)
     X_train, y_train, X_validate, y_validate, X_test, y_test = split_xy(train, validate, test)
     X_train, X_validate, X_test = scale(X_train, X_validate, X_test, train, validate, test)
-    return X_train, y_train, X_validate, y_validate, X_test, y_test
+    return train, X_train, y_train, X_validate, y_validate, X_test, y_test
 
 
 
