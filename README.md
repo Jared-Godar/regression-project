@@ -40,25 +40,22 @@ A home is often the most expensiver purchase one makes in their lifetime. Having
 
 |Target|Datatype|Definition|
 |:-------|:--------|:----------|
-| churn_encoded | int64 | 0: Customer retained 1: Customer Churned|
+| home_value | float64 | home value in dollars|
 
-Int64Index: 15947 entries
-
-Data columns (total 10 columns):
 ____
-| variable  |     Dtype    |
-|:----------|:-----------------------|
-|bedrooms    | float64 |
-|bathrooms   | float64 |
-|square_feet |  int64 |
-|taxes       | float64 |
-|home_value   |  float64|
-|propertylandusedesc  |  object|
-|fips_number   |   int64 |
-|zip_code      |   float64 |
-|tax_rate (calculated) |  float64 |
-|county_name  (engineered) |  object|
-|state_name  (engineered) |  object|
+| variable  |     Dtype    | Definition |
+|:----------|:-----------------------|:-----------|
+|bedrooms    | float64 | Number of bedrooms |
+|bathrooms   | float64 | Number of bathrooms |
+|square_feet |  int64 | Area in square feet |
+|year |  int64 | Year built |
+|taxes       | float64 | Tax amount dollars |
+|fips_number   |   int64 | Area code |
+|zip_code      |   category | Zip Code |
+|county_Orange      |   unit8 | Encoded county information |
+|county_Ventura      |   unit8 | Encoded county information |
+|county_avg (engineered) |  float64 | Average home price in county |
+|baseline  (engineered) |  float64 | baseline |
 
 </br>
 </br>
